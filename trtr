@@ -1,0 +1,56 @@
+import os
+import unicodedata
+
+def remove_accents(input_str):
+    """
+    Supprime les accents d'une chaîne de caractères en utilisant unicodedata.
+    """
+    return ''.join(
+        c for c in unicodedata.normalize('NFD', input_str) if unicodedata.category(c) != 'Mn'
+    )
+
+def write_data_to_txt(data_list, success_data, output_filename="output.txt"):
+    """
+    Écrit les données extraites dans un fichier .txt avec | comme délimiteur.
+    """
+    column_order = [
+        "OBJET", "fax_destinataire", "Mail_Expediteur", "Expéditeur", "DATE HEURE ACCUSE DE RECEPTION",
+        "DATE HEURE ENVOI", "N page", "Duree envoi", "Titre de l'expéditeur", "Entité", "Direction", 
+        "Contact AXA 1", "Contact AXA 2", "Contact AXA 3", "Destinataire", "Adresse Destinataire", 
+        "Tel Destinataire", "Fax Destinataire", "Mail Destinataire", "Date document", 
+        "Référence", "Compte à débiter", "SWIFT", "Titulaire de compte", "Montant décaissement", "Devise", "Date valeur compensée", 
+        "Bénéficiaire", "IBAN Bénéficiaire", "Banque Bénéficiaire", "Swift Bénéficiaire", "Commission", 
+        "Motif du paiement", "Référence de l'opération", "Signataire1", "Signataire2"
+    ]
+    
+    file_exists = os.path.exists(output_filename)
+    is_empty = os.stat(output_filename).st_size == 0 if file_exists else True
+    
+    with open(output_filename, 'a', encoding='utf-8') as f:
+        if is_empty:
+            f.write("|".join(remove_accents(col).upper() for col in column_order) + "\n")
+        
+        for i, page_data in enumerate(data_list):
+            for page_name, row in page_data.items():
+                success_info = success_data[i] if i < len(success_data) and isinstance(success_data[i], dict) else {}
+                row.update(success_info)
+                
+                line = [remove_accents(str(row.get(col, ""))).upper() for col in column_order]
+                f.write("|".join(line) + "\n")
+    
+    print(f"Données écrites avec succès dans {output_filename}")
+    
+    # Suppression des colonnes 'Référence' et 'Référence de l'opération'
+    with open(output_filename, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+    
+    header = lines[0].strip().split('|')
+    indices_to_remove = [header.index("RÉFÉRENCE"), header.index("RÉFÉRENCE DE L'OPÉRATION")]
+    
+    with open(output_filename, 'w', encoding='utf-8') as f:
+        for line in lines:
+            columns = line.strip().split('|')
+            filtered_columns = [col for idx, col in enumerate(columns) if idx not in indices_to_remove]
+            f.write("|".join(filtered_columns) + "\n")
+    
+    print("Colonnes 'Référence' et 'Référence de l'opération' supprimées après écriture du fichier.")
