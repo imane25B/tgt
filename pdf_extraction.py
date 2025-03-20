@@ -1,36 +1,58 @@
-import os
-import extract_msg
-import fitz 
 import io
+import fitz  # PyMuPDF
+import extract_msg
+import os
+
+processed_msg_files = set()  # Ensemble pour suivre les fichiers .msg déjà traités
 
 def extract_pdfs_from_msg(msg_path, output_dir):
     """
-    Extrait les fichiers PDF d'un fichier .msg et les stocke dans output_dir.
+    Extrait les fichiers PDF d'un fichier .msg et gère les fichiers imbriqués.
     """
-    msg = extract_msg.Message(msg_path)
+    if msg_path in processed_msg_files:
+        print(f"⚠️ Fichier déjà traité : {msg_path}. Ignoré pour éviter les boucles.")
+        return
+
+    processed_msg_files.add(msg_path)  # Marquer le fichier comme traité
+
+    try:
+        msg = extract_msg.Message(msg_path)
+    except Exception as e:
+        print(f"❌ Erreur lors de l'ouverture de {msg_path} : {e}")
+        return
 
     if not hasattr(msg, 'attachments') or not msg.attachments:
-        print("Aucune pièce jointe trouvée dans le fichier .msg.")
-        return {}
-
-    pdf_texts = {}
+        print(f"Aucune pièce jointe trouvée dans {msg_path}.")
+        return
 
     for attachment in msg.attachments:
+        if not attachment.longFilename:
+            print("⚠️ Pièce jointe sans nom détectée. Ignorée.")
+            continue
+
         filename = attachment.longFilename.rstrip('\x00').lower()
-        
+
         if filename.endswith('.pdf'):
             print(f"📄 PDF trouvé : {filename}")
-            
-            # Lecture du contenu PDF en mémoire
             pdf_data = io.BytesIO(attachment.data)
             pdf_text = extract_text_from_pdf(pdf_data)
 
             if pdf_text.strip():
-                pdf_texts[filename] = pdf_text
+                output_file_path = os.path.join(output_dir, f"{filename}_extracted_text.txt")
+                with open(output_file_path, "w", encoding="utf-8") as file:
+                    file.write(pdf_text)
+                print(f"✅ Texte extrait sauvegardé dans : {output_file_path}")
             else:
                 print(f"⚠️ Aucun texte extrait de {filename}. Le fichier peut être scanné ou vide.")
 
-    return pdf_texts
+        elif filename.endswith('.msg'):
+            print(f"📧 Fichier .msg imbriqué trouvé : {filename}")
+            nested_msg_path = os.path.join(output_dir, filename)
+            with open(nested_msg_path, "wb") as nested_msg_file:
+                nested_msg_file.write(attachment.data)
+            
+            # Appel récursif pour analyser le fichier .msg imbriqué
+            extract_pdfs_from_msg(nested_msg_path, output_dir)
 
 def extract_text_from_pdf(pdf_data):
     """
@@ -45,21 +67,3 @@ def extract_text_from_pdf(pdf_data):
         print(f"❌ Erreur lors de la lecture du PDF : {e}")
     
     return text
-
-
-if __name__ == "__main__":
-    msg_file = "tt/9.msg"  # Remplace par le chemin de ton fichier .msg
-    output_folder = "tt"
-    
-    os.makedirs(output_folder, exist_ok=True)
-    
-    extracted_texts = extract_pdfs_from_msg(msg_file, output_folder)
-    
-    if extracted_texts:
-        for pdf, text in extracted_texts.items():
-            textfinal = f"{text}\n{'-'*50}"
-            with open("extracted_text.txt", "w", encoding="utf-8") as file:
-                file.write(textfinal)
-            print(f"Texte extrait du PDF {pdf} sauvegardé dans 'extracted_text.txt'.")
-    else:
-        print("\n🚫 Aucun texte extrait. Vérifie si les fichiers sont bien extraits et lisibles.")
