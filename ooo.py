@@ -68,8 +68,6 @@ def save_extracted_data_to_txt(all_extracted_info, output_filename="extracted_da
             f.write("|".join(line) + "\n")
     
     print(f"✅ Données sauvegardées avec succès dans {output_filename}")
-# Set pour suivre les fichiers .msg déjà traités (éviter les boucles infinies)
-processed_msg_files = set()
 
 def sanitize_filename(filename):
     """Remove invalid characters from filename and ensure it's not too long."""
@@ -171,10 +169,6 @@ def extract_and_process_pdfs_from_msg(msg_path, output_dir, results_dir):
     depth = 0
 
     max_depth = 5
-
-    if msg_path in processed_msg_files:
-        print(f"⚠️ Fichier déjà traité : {msg_path}. Ignoré pour éviter les boucles.")
-        return {}
 
     if depth > max_depth:
         print(f"⚠️ Profondeur maximale de récursion atteinte ({max_depth}). Arrêt de la récursion.")
