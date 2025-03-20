@@ -1,0 +1,19 @@
+ultats_extraction\AXA VIREMENT CAIPB (16).msg_results\caipb partenariat 348,000 s1 s2.pdf_extracted_info.txt
+
+📂 Traitement de Virements vers 23 mails_2 ans/service.backofficebancaire@axa.fr (Primary)\Partie supérieure de la banque d'informations\VIREMENTS TRESORERIE\FAX PAR MAIL\contact CAIPB\AXA VIREMENT CAIPB (17).msg...
+📄 PDF trouvé : caipb partenariat 4m s1 s2.pdf
+✅ Traitement terminé pour caipb partenariat 4m s1 s2.pdf. Informations extraites sauvegardées dans resultat
+s_extraction\AXA VIREMENT CAIPB (17).msg_results\caipb partenariat 4m s1 s2.pdf_extracted_info.txt
+
+📂 Traitement de Virements vers 23 mails_2 ans/service.backofficebancaire@axa.fr (Primary)\Partie supérieure de la banque d'informations\VIREMENTS TRESORERIE\FAX PAR MAIL\contact CAIPB\AXA VIREMENT CAIPB (18).msg...
+📄 PDF trouvé : caiwm rachat partiel 9329400279 s1s2.pdf
+Traceback (most recent call last):
+  File "C:\Users\B616ZJ\Downloads\scripts_import_pdf_old\verify.py", line 233, in <module>
+    process_msg_files_recursively(root_folder, output_folder, results_folder)
+  File "C:\Users\B616ZJ\Downloads\scripts_import_pdf_old\verify.py", line 180, in process_msg_files_recursively
+    extracted_info = extract_and_process_pdfs_from_msg(msg_file_path, output_subfolder, results_folder)    
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^    
+  File "C:\Users\B616ZJ\Downloads\scripts_import_pdf_old\verify.py", line 119, in extract_and_process_pdfs_from_msg
+    with open(txt_output_path, "w", encoding="utf-8") as text_file:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: "extracted_files\\service.backofficebancaire@axa.fr (Primary)\\Partie supérieure de la banque d'informations\\VIREMENTS TRESORERIE\\FAX PAR MAIL\\contact CAIPB\\caiwm rachat partiel 9329400279 s1s2.pdf_extracted_text.txt"
