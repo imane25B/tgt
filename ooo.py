@@ -4,11 +4,27 @@ import fitz  # PyMuPDF
 import extract_msg
 import re
 import hashlib
+import unicodedata
 from pathlib import Path
 import shutil
 
 # Set pour suivre les fichiers .msg déjà traités (éviter les boucles infinies)
 processed_msg_files = set()
+
+def remove_accents(input_str):
+    """
+    Supprime les accents d'une chaîne de caractères en utilisant unicodedata.
+    
+    Args:
+        input_str (str): Chaîne d'entrée.
+    Returns:
+        str: Chaîne sans accents.
+    """
+    if not isinstance(input_str, str):
+        input_str = str(input_str)
+    return ''.join(
+        c for c in unicodedata.normalize('NFD', input_str) if unicodedata.category(c) != 'Mn'
+    )
 
 def sanitize_filename(filename):
     """Remove invalid characters from filename and ensure it's not too long."""
@@ -214,6 +230,55 @@ def extract_and_process_pdfs_from_msg(msg_path, output_dir, results_dir):
     
     return all_extracted_info
 
+def save_regex_extractions_to_file(all_extracted_info, output_filename="extractions_regex.txt"):
+    """
+    Sauvegarde les données extraites par regex dans un fichier texte délimité par |.
+    Les données sont converties en majuscules et les accents sont supprimés.
+    
+    Args:
+        all_extracted_info (dict): Dictionnaire contenant les informations extraites.
+            Format: {chemin_pdf: {champ1: valeur1, champ2: valeur2, ...}, ...}
+        output_filename (str): Nom du fichier de sortie.
+    """
+    # Ordre des colonnes pour le fichier de sortie
+    column_order = [
+        "Entité", "Direction", "contact1AXA", "contact2AXA", "contact3AXA", 
+        "Destinataire", "Tel Destinataire", "Fax Destinataire", "Date Document", 
+        "Référence", "Compte à débiter", "SWIFT", "Titulaire de compte", 
+        "Montant décaissement", "Devise", "Date valeur compensée", "Bénéficiaire", 
+        "IBAN Bénéficiaire", "Banque Bénéficiaire", "Swift Bénéficiaire", 
+        "Motif du paiement", "Référence de l'opération", 
+        "Signataire1", "Signataire2", "PATH"
+    ]
+    
+    # Vérifier si le fichier existe déjà pour écrire ou non l'en-tête
+    file_exists = os.path.exists(output_filename)
+    is_empty = not file_exists or os.stat(output_filename).st_size == 0
+    
+    with open(output_filename, 'a', encoding='utf-8') as f:
+        # Écrire l'en-tête si le fichier est vide
+        if is_empty:
+            f.write("|".join(remove_accents(col).upper() for col in column_order) + "\n")
+        
+        # Parcourir les informations extraites
+        for pdf_path, extracted_data in all_extracted_info.items():
+            # Créer une copie des données avec le chemin du PDF
+            row_data = extracted_data.copy()
+            row_data["PATH"] = pdf_path
+            
+            # Générer une ligne de données en respectant l'ordre des colonnes
+            line_values = []
+            for col in column_order:
+                value = row_data.get(col, "")
+                # Convertir en majuscules et supprimer les accents
+                cleaned_value = remove_accents(value).upper()
+                line_values.append(cleaned_value)
+            
+            # Écrire la ligne dans le fichier
+            f.write("|".join(line_values) + "\n")
+    
+    print(f"✅ Données extraites sauvegardées avec succès dans {output_filename}")
+
 def process_msg_files_recursively(root_folder, output_folder, results_folder):
     """
     Parcourt récursivement un dossier racine pour traiter tous les fichiers .msg,
@@ -227,6 +292,9 @@ def process_msg_files_recursively(root_folder, output_folder, results_folder):
     # Créer les dossiers de sortie s'ils n'existent pas
     output_folder_path.mkdir(exist_ok=True, parents=True)
     results_folder_path.mkdir(exist_ok=True, parents=True)
+    
+    # Dictionnaire pour collecter toutes les informations extraites
+    all_pdf_extractions = {}
     
     # Statistiques pour le résumé final
     total_msg_files = 0
@@ -262,6 +330,12 @@ def process_msg_files_recursively(root_folder, output_folder, results_folder):
                 # Extraire et traiter les PDF du fichier .msg
                 try:
                     extracted_info = extract_and_process_pdfs_from_msg(msg_file_path, str(output_subfolder), str(results_folder_path))
+                    
+                    # Ajouter les informations extraites au dictionnaire global avec le chemin complet
+                    for pdf_name, info in extracted_info.items():
+                        pdf_full_path = f"{msg_file_path} > {pdf_name}" if '>' not in pdf_name else f"{msg_file_path} > {pdf_name}"
+                        all_pdf_extractions[pdf_full_path] = info
+                        
                 except Exception as e:
                     print(f"❌ Erreur critique lors du traitement de {msg_file_path}: {e}")
                     continue
@@ -304,77 +378,5 @@ def process_msg_files_recursively(root_folder, output_folder, results_folder):
                 except (OSError, IOError) as e:
                     print(f"⚠️ Erreur lors de l'écriture du fichier de synthèse: {e}")
     
-    # Créer un rapport global
-    global_report_path = results_folder_path / "rapport_global.txt"
-    try:
-        with open(global_report_path, "w", encoding="utf-8") as report:
-            report.write(f"Rapport global d'extraction\n")
-            report.write(f"==========================\n\n")
-            report.write(f"Total de fichiers .msg traités: {total_msg_files}\n")
-            report.write(f"Total de fichiers PDF extraits: {total_pdf_files}\n")
-            report.write(f"Total de fichiers .msg imbriqués: {total_nested_msg}\n")
-        
-        print(f"\n✅ Traitement terminé!")
-        print(f"Rapport global disponible à: {global_report_path}")
-    except (OSError, IOError) as e:
-        print(f"⚠️ Erreur lors de l'écriture du rapport global: {e}")
-        print(f"\n✅ Traitement terminé, mais impossible d'écrire le rapport global!")
-
-# Fonction pour vérifier si le dossier est accessible et s'il contient des fichiers .msg
-def validate_input_folder(folder_path):
-    if not os.path.exists(folder_path):
-        print(f"❌ Le dossier {folder_path} n'existe pas!")
-        return False
-    
-    msg_files = []
-    for dirpath, _, filenames in os.walk(folder_path):
-        for filename in filenames:
-            if filename.lower().endswith(".msg"):
-                msg_files.append(os.path.join(dirpath, filename))
-                if len(msg_files) >= 5:  # Vérifier seulement les 5 premiers pour éviter de parcourir tout le dossier
-                    break
-        if len(msg_files) >= 5:
-            break
-    
-    if not msg_files:
-        print(f"⚠️ Aucun fichier .msg trouvé dans {folder_path}. Vérifiez le dossier!")
-        return False
-    
-    return True
-
-if __name__ == "__main__":
-    # Paramètres configurables
-    root_folder = "Virements vers 23 mails_2 ans/"  # Dossier racine contenant les fichiers .msg
-    output_folder = "extracted_files"  # Dossier pour stocker les fichiers extraits et le texte brut
-    results_folder = "resultats_extraction"  # Dossier pour stocker les informations extraites
-    
-    # Vérifier si les dossiers de sortie existent déjà et les nettoyer si nécessaire
-    for folder in [output_folder, results_folder]:
-        if os.path.exists(folder):
-            try:
-                shutil.rmtree(folder)
-                print(f"🧹 Nettoyage du dossier existant: {folder}")
-            except Exception as e:
-                print(f"⚠️ Impossible de nettoyer le dossier {folder}: {e}")
-                # Créer un nom alternatif avec timestamp
-                import time
-                folder = f"{folder}_{int(time.time())}"
-                print(f"Utilisation d'un dossier alternatif: {folder}")
-    
-    # Valider le dossier d'entrée
-    if validate_input_folder(root_folder):
-        try:
-            process_msg_files_recursively(root_folder, output_folder, results_folder)
-        except Exception as e:
-            print(f"❌ Erreur critique: {e}")
-            import traceback
-            traceback.print_exc()
-    else:
-        print("⛔ Traitement annulé en raison d'erreurs dans la configuration.")
-
-if __name__ == "__main__":
-    root_folder = "Virements vers 23 mails_2 ans/"  # Dossier racine contenant les fichiers .msg
-    output_folder = "extracted_files"  # Dossier pour stocker les fichiers extraits et le texte brut
-    results_folder = "resultats_extraction"  # Dossier pour stocker les informations extraites
-    
-    process_msg_files_recursively(root_folder, output_folder, results_folder)
+    # Sauvegarder toutes les extractions dans un fichier délimité
+    extractions_output_path = results_folder_path / "toutes_extra
