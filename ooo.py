@@ -33,13 +33,13 @@ def save_extracted_data_to_txt(all_extracted_info, output_filename="extracted_da
     """
     # Définir l'ordre des colonnes à partir des clés possibles dans extract_information
     column_order = [
-        "OBJET", "Mail_Expediteur", "Expediteur", "DATE HEURE ENVOI", "N PAGE", "Mail destinataire",
+        "OBJET", "Expediteur", "DATE HEURE ENVOI", "N PAGE", "Mail destinataire",
         "Entité", "Direction", "contact1AXA", "contact2AXA", "contact3AXA",
         "Destinataire", "Tel Destinataire", "Fax Destinataire", "Date Document",
         "Référence", "Compte à débiter", "SWIFT", "Titulaire de compte",
         "Montant décaissement", "Devise", "Date valeur compensée", "Bénéficiaire",
         "IBAN Bénéficiaire", "Banque Bénéficiaire", "Swift Bénéficiaire",
-        "Motif du paiement", "Référence de l'opération", "Signataire1", "Signataire2", "PATH"
+        "Motif du paiement", "Référence de l'opération", "Signataire1", "Signataire2", "NOM DU PDF"
     ]
     
     # Vérifier si le fichier existe pour déterminer si l'en-tête doit être écrit
@@ -54,7 +54,7 @@ def save_extracted_data_to_txt(all_extracted_info, output_filename="extracted_da
         # Parcourir les données extraites
         for pdf_path, data in all_extracted_info.items():
             # Ajouter le chemin du PDF aux données
-            data["PATH"] = pdf_path
+            data["NOM DU PDF"] = pdf_path
             
             # Générer une ligne de données en respectant l'ordre des colonnes
             line = []
@@ -168,6 +168,10 @@ def extract_and_process_pdfs_from_msg(msg_path, output_dir, results_dir):
     Extrait les fichiers PDF d'un fichier .msg, applique les regex et gère les fichiers imbriqués.
     Retourne un dictionnaire contenant les informations extraites de chaque PDF.
     """
+    depth = 0
+
+    max_depth = 5
+
     if msg_path in processed_msg_files:
         print(f"⚠️ Fichier déjà traité : {msg_path}. Ignoré pour éviter les boucles.")
         return {}
@@ -182,10 +186,6 @@ def extract_and_process_pdfs_from_msg(msg_path, output_dir, results_dir):
     # Dictionnaire pour stocker les informations extraites par PDF
     all_extracted_info = {}
 
-    # Indentation pour une meilleure lisibilité des messages imbriqués
-    indent = "  " * depth
-    print(f"{indent}📧 Traitement du fichier .msg {'imbriqué ' * (depth > 0)}[profondeur {depth}]: {msg_path}")
-    
     try:
         # Vérifier si le msg_path est un BytesIO ou un chemin de fichier
         if isinstance(msg_path, io.BytesIO) or isinstance(msg_path, bytes):
@@ -199,22 +199,10 @@ def extract_and_process_pdfs_from_msg(msg_path, output_dir, results_dir):
         expediteur = msg.sender 
         mail_destinataire = msg.to
         
-        if hasattr(msg, 'sender') and msg.sender:
-            # Recherche d'un email dans le format "Nom <email@domaine.com>"
-            email_match = re.search(r'<([^>]+)>', msg.sender)
-            if email_match:
-                mail_expediteur = email_match.group(1)
-            else:
-                # Si pas de format avec <>, recherche simple d'email
-                email_match = re.search(r'[\w\.-]+@[\w\.-]+', msg.sender)
-                if email_match:
-                    mail_expediteur = email_match.group(0)
-        
         print(f"📧 Informations du message :")
         print(f"  📌 Objet: {objet}")
         print(f"  📅 Date: {date}")
         print(f"  👤 Expéditeur: {expediteur}")
-        print(f"  📩 Mail expéditeur: {mail_expediteur}")
         print(f"  👥 Destinataire: {mail_destinataire}")
         
     except Exception as e:
@@ -280,7 +268,6 @@ def extract_and_process_pdfs_from_msg(msg_path, output_dir, results_dir):
                 
                 # Ajouter les informations du message au dictionnaire des informations extraites
                 extracted_info["OBJET"] = objet
-                extracted_info["Mail_Expediteur"] = mail_expediteur
                 extracted_info["Expediteur"] = expediteur
                 extracted_info["DATE HEURE ENVOI"] = date
                 extracted_info["N PAGE"] = str(numero_pages)
