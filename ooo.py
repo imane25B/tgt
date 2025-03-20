@@ -171,23 +171,34 @@ def extract_and_process_pdfs_from_msg(msg_path, output_dir, results_dir):
     if msg_path in processed_msg_files:
         print(f"⚠️ Fichier déjà traité : {msg_path}. Ignoré pour éviter les boucles.")
         return {}
+
+    if depth > max_depth:
+        print(f"⚠️ Profondeur maximale de récursion atteinte ({max_depth}). Arrêt de la récursion.")
+        return {}
+
     
     processed_msg_files.add(msg_path)  # Marquer le fichier comme traité
     
     # Dictionnaire pour stocker les informations extraites par PDF
     all_extracted_info = {}
+
+    # Indentation pour une meilleure lisibilité des messages imbriqués
+    indent = "  " * depth
+    print(f"{indent}📧 Traitement du fichier .msg {'imbriqué ' * (depth > 0)}[profondeur {depth}]: {msg_path}")
     
     try:
-        msg = extract_msg.Message(msg_path)
+        # Vérifier si le msg_path est un BytesIO ou un chemin de fichier
+        if isinstance(msg_path, io.BytesIO) or isinstance(msg_path, bytes):
+            msg = extract_msg.Message(msg_path)
+        else:
+            msg = extract_msg.Message(msg_path)
         
         # Extraction des informations du message
-        objet = msg.subject if hasattr(msg, 'subject') else "Non trouvé"
-        date = msg.date if hasattr(msg, 'date') else "Non trouvé"
-        expediteur = msg.sender if hasattr(msg, 'sender') else "Non trouvé"
-        mail_destinataire = msg.to if hasattr(msg, 'to') else "Non trouvé"
+        objet = msg.subject
+        date = msg.date
+        expediteur = msg.sender 
+        mail_destinataire = msg.to
         
-        # Extraction de l'adresse email de l'expéditeur
-        mail_expediteur = "Non trouvé"
         if hasattr(msg, 'sender') and msg.sender:
             # Recherche d'un email dans le format "Nom <email@domaine.com>"
             email_match = re.search(r'<([^>]+)>', msg.sender)
@@ -296,7 +307,7 @@ def extract_and_process_pdfs_from_msg(msg_path, output_dir, results_dir):
             else:
                 print(f"⚠️ Aucun texte extrait de {filename}. Le fichier peut être scanné ou vide.")
         
-        elif filename.endswith('.msg'):
+        if is_msg_file(filename, attachment.data):
             print(f"📧 Fichier .msg imbriqué trouvé : {filename}")
             
             # Sauvegarder le fichier .msg imbriqué
@@ -320,6 +331,85 @@ def extract_and_process_pdfs_from_msg(msg_path, output_dir, results_dir):
                 all_extracted_info[f"{filename}>{pdf_name}"] = info  # Utiliser une notation pour indiquer l'imbrication
     
     return all_extracted_info
+def save_nested_msg(msg_data, base_filename, output_dir):
+    """
+    Sauvegarde un fichier .msg imbriqué avec un nom sécurisé et gère les chemins longs.
+    
+    Args:
+        msg_data (bytes): Données binaires du fichier .msg
+        base_filename (str): Nom de base pour le fichier
+        output_dir (str): Répertoire de sortie
+    
+    Returns:
+        str: Chemin complet du fichier sauvegardé
+    """
+    # Sanitize le nom de fichier
+    safe_filename = sanitize_filename(base_filename)
+    
+    # Vérifier si le nom du fichier est trop long
+    if len(safe_filename) > 100:
+        # Créer un nom plus court basé sur un hash
+        hash_obj = hashlib.md5(base_filename.encode())
+        short_name = hash_obj.hexdigest()[:16] + ".msg"
+        output_path = os.path.join(output_dir, short_name)
+    else:
+        # Ajouter l'extension .msg si elle n'est pas présente
+        if not safe_filename.lower().endswith('.msg'):
+            safe_filename += ".msg"
+        output_path = os.path.join(output_dir, safe_filename)
+    
+    # Garantir que le chemin n'est pas trop long (limite Windows ~ 260 caractères)
+    if len(output_path) > 250:
+        # Utiliser un chemin raccourci
+        hash_obj = hashlib.md5(output_path.encode())
+        short_path = os.path.join(output_dir, hash_obj.hexdigest()[:16] + ".msg")
+        output_path = short_path
+    
+    # Sauvegarder le fichier
+    try:
+        with open(output_path, "wb") as f:
+            f.write(msg_data)
+        return output_path
+    except Exception as e:
+        print(f"❌ Erreur lors de la sauvegarde du fichier .msg imbriqué : {e}")
+        # Essayer un chemin encore plus court en cas d'erreur
+        emergency_path = os.path.join(output_dir, "nested_" + hashlib.md5(str(time.time()).encode()).hexdigest()[:8] + ".msg")
+        with open(emergency_path, "wb") as f:
+            f.write(msg_data)
+        return emergency_path
+def is_msg_file(filename, data):
+    """
+    Détecte si un fichier est un fichier .msg en vérifiant à la fois l'extension
+    et la signature du fichier.
+    
+    Args:
+        filename (str): Nom du fichier
+        data (bytes): Contenu binaire du fichier
+    
+    Returns:
+        bool: True si c'est un fichier .msg, False sinon
+    """
+    # Vérification de l'extension (insensible à la casse)
+    if filename.lower().endswith('.msg'):
+        return True
+    
+    # Vérification de la signature de fichier MSG (format CFBF - Compound File Binary Format)
+    # La signature des fichiers MSG est généralement D0 CF 11 E0 A1 B1 1A E1
+    if len(data) >= 8 and data[:8] == b'\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1':
+        print(f"⚠️ Fichier détecté comme .msg par sa signature, mais sans extension .msg: {filename}")
+        return True
+    
+    # Vérification supplémentaire pour les fichiers avec extension manquante
+    try:
+        # Tenter d'ouvrir avec extract_msg pour voir si ça fonctionne
+        msg_test = extract_msg.Message(io.BytesIO(data))
+        # Si pas d'erreur, c'est probablement un fichier .msg
+        print(f"⚠️ Fichier détecté comme .msg par analyse, mais sans extension .msg: {filename}")
+        return True
+    except Exception:
+        pass
+    
+    return False
 def process_msg_files_recursively(root_folder, output_folder, results_folder):
     """
     Parcourt récursivement un dossier racine pour traiter tous les fichiers .msg,
